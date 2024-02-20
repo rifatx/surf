@@ -134,6 +134,11 @@ typedef struct {
 } Button;
 
 typedef struct {
+  char *token;
+  char *uri;
+} SearchEngine;
+
+typedef struct {
 	const char *uri;
 	Parameter config[ParameterLast];
 	regex_t re;
@@ -222,6 +227,9 @@ static void webprocessterminated(WebKitWebView *v,
                                  Client *c);
 static void closeview(WebKitWebView *v, Client *c);
 static void destroywin(GtkWidget* w, Client *c);
+static gchar *parseuri(const gchar *uri);
+ 
+static void handle_zoommtg(WebKitURISchemeRequest *request);
 
 /* Hotkeys */
 static void pasteuri(GtkClipboard *clipboard, const char *text, gpointer d);
@@ -570,6 +578,7 @@ loaduri(Client *c, const Arg *a)
 	if (g_strcmp0(uri, "") == 0)
 		return;
 
+
 	if (g_str_has_prefix(uri, "http://")  ||
 	    g_str_has_prefix(uri, "https://") ||
 	    g_str_has_prefix(uri, "file://")  ||
@@ -584,7 +593,7 @@ loaduri(Client *c, const Arg *a)
 			url = g_strdup_printf("file://%s", path);
 			free(path);
 		} else {
-			url = g_strdup_printf("http://%s", uri);
+      url = parseuri(uri);
 		}
 		if (apath != uri)
 			free(apath);
@@ -1195,6 +1204,9 @@ newview(Client *c, WebKitWebView *rv)
 		                 G_CALLBACK(downloadstarted), c);
 		g_signal_connect(G_OBJECT(context), "initialize-web-extensions",
 		                 G_CALLBACK(initwebextensions), c);
+
+		webkit_web_context_register_uri_scheme(context, "zoommtg",
+						(WebKitURISchemeRequestCallback)handle_zoommtg, NULL, NULL);
 
 		v = g_object_new(WEBKIT_TYPE_WEB_VIEW,
 		    "settings", settings,
@@ -1814,6 +1826,38 @@ destroywin(GtkWidget* w, Client *c)
 }
 
 void
+handle_zoommtg(WebKitURISchemeRequest *request)
+{
+	char* uri = webkit_uri_scheme_request_get_uri (request);
+	Arg a = (Arg)PLUMB(uri);
+	printf("handleplumb: %s",(char*)a.v);
+	if (fork() == 0) {
+		if (dpy)
+			close(ConnectionNumber(dpy));
+		close(spair[0]);
+		close(spair[1]);
+		setsid();
+		execvp(((char **)a.v)[0], (char **)a.v);
+		fprintf(stderr, "%s: execvp %s", argv0, ((char **)a.v)[0]);
+		perror(" failed");
+		exit(1);
+	}
+}
+
+gchar *
+parseuri(const gchar *uri)
+{
+  guint i;
+
+  for (i = 0; i < LENGTH(searchengines); i++) {
+  if (g_str_has_prefix(uri, searchengines[i].token))
+    return g_strdup_printf(searchengines[i].uri, uri + strlen(searchengines[i].token));
+  }
+
+  return g_strdup_printf("http://%s", uri);
+}
+
+void
 pasteuri(GtkClipboard *clipboard, const char *text, gpointer d)
 {
 	Arg a = {.v = text };
@@ -2077,6 +2121,9 @@ main(int argc, char *argv[])
 		defconfig[Geolocation].val.i = 1;
 		defconfig[Geolocation].prio = 2;
 		break;
+	case 'h':
+		startgo = 1;
+		break;
 	case 'i':
 		defconfig[LoadImages].val.i = 0;
 		defconfig[LoadImages].prio = 2;
@@ -2162,6 +2209,12 @@ main(int argc, char *argv[])
 
 	loaduri(c, &arg);
 	updatetitle(c);
+
+	if (startgo) {
+		/* start directly into GO prompt */
+		Arg a = (Arg)SETPROP("_SURF_URI", "_SURF_GO", PROMPT_GO);
+		spawn(c, &a);
+	}
 
 	gtk_main();
 	cleanup();

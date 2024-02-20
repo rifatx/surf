@@ -7,6 +7,9 @@ static char *certdir        = "~/.surf/certificates/";
 static char *cachedir       = "~/.surf/cache/";
 static char *cookiefile     = "~/.surf/cookies.txt";
 
+/* enable to open GO prompt on startup */
+static int startgo = 0;
+
 /* Webkit default features */
 /* Highest priority value will be used.
  * Default parameters are priority 0
@@ -54,6 +57,11 @@ static UriParameters uriparams[] = {
 	{ "(://|\\.)suckless\\.org(/|$)", {
 	  [JavaScript] = { { .i = 0 }, 1 },
 	}, },
+};
+
+static SearchEngine searchengines[] = {
+  { " ", "https://duckduckgo.com/?q=%s" },
+  { "osrs ", "https://oldschool.runescape.wiki/?search=%s" },
 };
 
 /* default window size: width, height */
